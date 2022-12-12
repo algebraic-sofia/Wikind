@@ -1,0 +1,51 @@
+use Kind.Coverage as Cover
+
+record Cover/Constraint {
+    left: Kind.Term
+    right: Kind.Term
+    ty: Kind.Term
+}
+
+record Cover/Problem {
+    type: Kind.Term
+    rows: List Cover/Row
+}
+
+record Cover/Row {
+    rule: Kind.Rule
+    constraints: List Cover/Constraint
+}
+
+Cover/Constraint.show (constraint: Cover/Constraint) : String
+Cover/Constraint.show (Cover/Constraint.new left right ty) =
+    (Kind.Printer.text
+        [ "[" (Kind.Term.show left) " /? " (Kind.Term.show right) " : "  (Kind.Term.show ty) "] " ])
+
+Cover/Row.show (row: Cover/Row) : String
+Cover/Row.show (Cover/Row.new rule constraints) = 
+    (Kind.Printer.text 
+        [ "  |" 
+         (Kind.Rule.show rule) 
+         " " 
+         (Kind.Printer.text (List.map constraints (x => Cover/Constraint.show x)))
+         ])
+
+Cover/Problem.intro (problem: Cover/Problem) : Kind.Checker Cover/Problem
+Cover/Problem.intro (Cover/Problem.new type rows) = 
+    (Kind.Term.if_all type
+        (orig => name => typ => body => 
+            do Kind.Checker {
+
+                return (Cover/Problem.new type rows)
+            })
+        (Kind.Checker.pure (Cover/Problem.new type rows)))
+
+    Cover/Problem.intro_row (row: Cover/Row) : Cover/Row
+    Cover/Problem.intro_row (Cover/Row.new rule constraints) = _
+
+Cover/check (function_id: U60): Kind.Checker Unit
+Cover/check fnid =
+    let rules   = Kind.Axiom.RuleOf fnid
+    let type    = Kind.Axiom.TypeOf fnid
+    let problem = Cover/Problem.new type (rows = List.map rules (x => Cover/Row.new x []))
+    _

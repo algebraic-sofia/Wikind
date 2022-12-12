@@ -1,2 +1,5 @@
-// Automatically derived from Bool/_.type
-Bool : Type
+#derive[match]
+type Bool {
+  true
+  false
+}

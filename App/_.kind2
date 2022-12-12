@@ -1,2 +1,6 @@
-// Automatically derived from App/_.type
-App (s: Type) : Type
+#derive[open]
+record App (s: Type) {
+  init : s
+  draw : s -> App.DOM
+  when : (event: App.Event) -> (state: s) -> IO s
+}

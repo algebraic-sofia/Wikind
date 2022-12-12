@@ -1,2 +1,4 @@
-// Automatically derived from Nat/_.type
-Nat : Type
+type Nat {
+  zero
+  succ (pred: Nat)
+}

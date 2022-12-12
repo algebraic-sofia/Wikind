@@ -1,2 +1,4 @@
-// Automatically derived from Pair/_.type
-Pair (a: Type) (b: Type) : Type
+#derive[match]
+type Pair (a: Type) (b: Type) {
+  new (fst: a) (snd: b)
+}

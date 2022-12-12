@@ -1,2 +1,5 @@
-// Automatically derived from Bit/_.type
-Bit : Type
+type Bit {
+    0
+    1
+  }
+  

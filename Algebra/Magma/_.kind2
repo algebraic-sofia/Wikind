@@ -1,2 +1,4 @@
-// Automatically derived from Algebra/Magma/_.type
-Algebra.Magma (t: Type) : Type
+// A set equipped with a binary operation that is closed.
+record Algebra.Magma (t: Type) {
+  concat: t -> t -> t
+}

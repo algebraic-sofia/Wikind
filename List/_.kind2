@@ -1,2 +1,5 @@
-// Automatically derived from List/_.type
-List (t: Type) : Type
+#derive[match]
+type List (t: Type) {
+  nil
+  cons (head: t) (tail: List t)
+}

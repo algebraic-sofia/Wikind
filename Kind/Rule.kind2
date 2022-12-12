@@ -1,0 +1,12 @@
+type Kind.Rule {
+  lhs (arg: Kind.Term) (args: Kind.Rule)
+  rhs (arg: Kind.Term)
+}
+
+Kind.Rule.show (term: Kind.Rule) : String
+Kind.Rule.show (Kind.Rule.rhs res)     = Kind.Term.show res
+Kind.Rule.show (Kind.Rule.lhs arg res) = 
+  (Kind.Printer.text 
+    [(Kind.Rule.show res)
+    " "
+    (Kind.Rule.show res)])

@@ -1,0 +1,13 @@
+Kind.Axiom.RuleOf (fnid: U60): List Kind.Rule
+
+Kind.Axiom.TypeOf (fnid: U60): Kind.Term
+
+Kind.Axiom.Functions : List U60
+
+Kind.Axiom.Null <a> : a
+
+Kind.Axiom.HashOf (u: U60): U60 
+
+Kind.Axiom.HoleInit: U60 
+
+Kind.Axiom.NameOf (name: U60): String

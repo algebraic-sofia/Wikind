@@ -12,7 +12,7 @@ Apps.Demo.init : Apps.Demo.State {
 
 // // The 'draw' function converts the state into an HTML element.
 Apps.Demo.draw (state: Apps.Demo.State) : App.DOM
-Apps.Demo.draw (List.cons (List String) array1 (List.nil (List String))) =
+Apps.Demo.draw (List.cons array1 List.nil) =
     let square = (x : U60) =>
     (App.DOM.node "button" [(Pair.new "className" "square")
     (Pair.new "id" (Show.to_string (U60.show x)))] [] [
@@ -70,6 +70,7 @@ Apps.Demo.when event state = do IO {
 }
 
 // An App just combines the 'init', 'draw' and 'when' functions.
+#keep
 Apps.Demo : App Apps.Demo.State {
   (App.new
     Apps.Demo.init
