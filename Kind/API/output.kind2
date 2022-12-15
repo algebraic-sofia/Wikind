@@ -2,9 +2,8 @@ Kind.API.output (res: List (Pair U60 (List (Kind.Result Unit)))): List (Kind.Err
 Kind.API.output (List.nil t)            = List.nil
 Kind.API.output (List.cons t pair rest) =
   // TODO: Check why i cant simply type check on the pair
-  match Pair pair {
-    new fst snd => List.concat (Kind.API.output.function fst snd) (Kind.API.output rest)
-  }
+  let Pair.new fst snd = pair
+  List.concat (Kind.API.output.function fst snd) (Kind.API.output rest)
 
 Kind.API.output.function (fnid: U60) (ls: List (Kind.Result Unit)): List (Kind.Error.Quoted)
 Kind.API.output.function fnid (List.nil t) = List.nil

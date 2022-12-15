@@ -1,5 +1,13 @@
 use Kind.Coverage as Cover
 
+#derive[match]
+type Result (a: Type) {
+    ok (value: a)
+    none
+    bottom
+}
+
+#derive[getters]
 record Cover/Constraint {
     left: Kind.Term
     right: Kind.Term
@@ -11,41 +19,411 @@ record Cover/Problem {
     rows: List Cover/Row
 }
 
+#derive[getters]
 record Cover/Row {
     rule: Kind.Rule
     constraints: List Cover/Constraint
 }
 
+type Cover/CaseTree {
+    case (clauses: List (Pair String Cover/CaseTree))
+    intro (name: U60) (rest: Cover/CaseTree)
+    done
+    uncovered
+}
+
+Cover/CaseTree.show (ident: String) (tree: Cover/CaseTree) : String
+
+Cover/CaseTree.show ident Cover/CaseTree.done =
+    String.concat ident "done\n"
+
+Cover/CaseTree.show ident Cover/CaseTree.uncovered =
+    String.concat ident "uncovered\n"
+
+Cover/CaseTree.show ident (Cover/CaseTree.intro encoded rest) =
+    Kind.Printer.text [ ident "intro " (Kind.Name.show encoded) "\n" (Cover/CaseTree.show (String.concat " " ident) rest) ]
+
+Cover/CaseTree.show ident (Cover/CaseTree.case clauses)  =
+    Kind.Printer.text [ ident "case\n" (Kind.Printer.text (List.map clauses (x =>
+        let Pair.new fst snd = x
+        Kind.Printer.text [" " ident fst " => \n" (Cover/CaseTree.show (String.concat "  " ident) snd)]))) ]
+
 Cover/Constraint.show (constraint: Cover/Constraint) : String
 Cover/Constraint.show (Cover/Constraint.new left right ty) =
     (Kind.Printer.text
-        [ "[" (Kind.Term.show left) " /? " (Kind.Term.show right) " : "  (Kind.Term.show ty) "] " ])
+        [ "[" (Kind.Term.show (Kind.Term.eval left)) " /? " (Kind.Term.show right) " : "  (Kind.Term.show ty) "] " ])
+
+Kind.Rule.show_no_rhs (term: Kind.Rule) : String
+Kind.Rule.show_no_rhs (Kind.Rule.rhs res)     = ""
+Kind.Rule.show_no_rhs (Kind.Rule.lhs arg res) =
+  (Kind.Printer.text
+    [(Kind.Term.show arg)
+    " "
+    (Kind.Rule.show res)])
 
 Cover/Row.show (row: Cover/Row) : String
-Cover/Row.show (Cover/Row.new rule constraints) = 
-    (Kind.Printer.text 
-        [ "  |" 
-         (Kind.Rule.show rule) 
-         " " 
+Cover/Row.show (Cover/Row.new rule constraints) =
+    (Kind.Printer.text
+        [ "  | "
          (Kind.Printer.text (List.map constraints (x => Cover/Constraint.show x)))
+         (Kind.Rule.show_no_rhs rule)
+         "\n"
          ])
 
-Cover/Problem.intro (problem: Cover/Problem) : Kind.Checker Cover/Problem
-Cover/Problem.intro (Cover/Problem.new type rows) = 
+Cover/Problem.show (problem: Cover/Problem) : String
+Cover/Problem.show (Cover/Problem.new type rows) =
+    (Kind.Printer.text
+        [ (Kind.Printer.text
+            [ "⊢ "
+             (Kind.Term.show type)
+             "\n"
+            ])
+        (Kind.Printer.text (List.map rows (x => Cover/Row.show x)))
+
+        ])
+
+Cover/Problem.intro (problem: Cover/Problem) : Kind.Checker Cover/CaseTree
+Cover/Problem.intro (Cover/Problem.new type rows) =
     (Kind.Term.if_all type
-        (orig => name => typ => body => 
+        (orig => name => typ => body =>
             do Kind.Checker {
-
-                return (Cover/Problem.new type rows)
+                ask depth = Kind.Checker.get_depth
+                Kind.Checker.extend name typ []
+                let var = Kind.Term.var orig name depth
+                let problem = (Cover/Problem.new (body var) (List.map rows (x => Cover/Problem.intro_row typ var x)))
+                ask tree = Cover/Problem.split problem
+                return Cover/CaseTree.intro name tree
             })
-        (Kind.Checker.pure (Cover/Problem.new type rows)))
+        (Cover/Problem.split (Cover/Problem.new type rows)))
 
-    Cover/Problem.intro_row (row: Cover/Row) : Cover/Row
-    Cover/Problem.intro_row (Cover/Row.new rule constraints) = _
+    Cover/Problem.intro_row (typ: Kind.Term) (var: Kind.Term) (row: Cover/Row) : Cover/Row
+    Cover/Problem.intro_row typ var (Cover/Row.new (Kind.Rule.lhs arg rule) constraints) =
+        (Cover/Row.new rule (List.cons (Cover/Constraint.new var arg typ) constraints))
+
+Cover/Constraint.is_solved (constraint: Cover/Constraint) : Bool
+Cover/Constraint.is_solved (Cover/Constraint.new l (Kind.Term.var _ _ _) t) = Bool.true
+Cover/Constraint.is_solved (Cover/Constraint.new l r t)                     = Bool.false
+
+Cover/Constraint.is_rhs (rule: Kind.Rule) : Bool
+Cover/Constraint.is_rhs (Kind.Rule.rhs _) = Bool.true
+Cover/Constraint.is_rhs _                 = Bool.false
+
+Cover/Problem.is_solved (problem: Cover/Problem) : Bool
+Cover/Problem.is_solved (Cover/Problem.new _ rows) =
+    match Maybe (List.head rows) {
+        some (value = row) => 
+            (Bool.and
+                (Cover/Constraint.is_rhs (Cover/Row.rule.get row))
+                (List.all (Cover/Row.constraints.get row) (x => Cover/Constraint.is_solved x)))
+        none => Bool.false
+    }
+
+Cover/Constraint.is_cons (constraint: Cover/Constraint) : Maybe U60
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct0 name _) ty)                              = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct1 name _ _) ty)                            = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct2 name _ _ _) ty)                          = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct3 name _ _ _ _) ty)                        = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct4 name _ _ _ _ _) ty)                      = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct5 name _ _ _ _ _ _) ty)                    = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct6 name _ _ _ _ _ _ _) ty)                  = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct8 name _ _ _ _ _ _ _ _ _) ty)              = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct7 name _ _ _ _ _ _ _ _) ty)                = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct9 name _ _ _ _ _ _ _ _ _ _) ty)            = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct10 name _ _ _ _ _ _ _ _ _ _ _) ty)         = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct11 name _ _ _ _ _ _ _ _ _ _ _ _) ty)       = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct12 name _ _ _ _ _ _ _ _ _ _ _ _ _) ty)     = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct13 name _ _ _ _ _ _ _ _ _ _ _ _ _ _) ty)   = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct14 name _ _ _ _ _ _ _ _ _ _ _ _ _ _ _) ty) = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct15 name _ _) ty)                           = Maybe.some name
+Cover/Constraint.is_cons (Cover/Constraint.new left (Kind.Term.ct16 name _ _) ty)                           = Maybe.some name
+Cover/Constraint.is_cons _ = Maybe.none
+
+Kind.Term.get_name (name: Kind.Term) : Maybe U60
+
+Kind.Term.get_name (Kind.Term.ct0 name _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct1 name _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct2 name _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct3 name _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct4 name _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct5 name _ _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct6 name _ _ _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct8 name _ _ _ _ _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct7 name _ _ _ _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct9 name _ _ _ _ _ _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct10 name _ _ _ _ _ _ _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct11 name _ _ _ _ _ _ _ _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct12 name _ _ _ _ _ _ _ _ _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct13 name _ _ _ _ _ _ _ _ _ _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct14 name _ _ _ _ _ _ _ _ _ _ _ _ _ _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct15 name _ _) = Maybe.some name
+Kind.Term.get_name (Kind.Term.ct16 name _ _) = Maybe.some name
+Kind.Term.get_name _ = Maybe.none
+
+Kind.Axiom.Compare (n: U60) (m: U60) : Bool
+
+Kind.Term.get_pairs (left: Kind.Term) (right: Kind.Term) : Maybe (List (Pair Kind.Term Kind.Term))
+Kind.Term.get_pairs (Kind.Term.ct0 name orig)                                                (Kind.Term.ct0 name1 _orig)                                                = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some []) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct1 name orig x0)                                             (Kind.Term.ct1 name1 _orig y0)                                             = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct2 name orig x0 x1)                                          (Kind.Term.ct2 name1 _orig y0 y1)                                          = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct3 name orig x0 x1 x2)                                       (Kind.Term.ct3 name1 _orig y0 y1 y2)                                       = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct4 name orig x0 x1 x2 x3)                                    (Kind.Term.ct4 name1 _orig y0 y1 y2 y3)                                    = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct5 name orig x0 x1 x2 x3 x4)                                 (Kind.Term.ct5 name1 _orig y0 y1 y2 y3 y4)                                 = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct6 name orig x0 x1 x2 x3 x4 x5)                              (Kind.Term.ct6 name1 _orig y0 y1 y2 y3 y4 y5)                              = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct7 name orig x0 x1 x2 x3 x4 x5 x6)                           (Kind.Term.ct7 name1 _orig y0 y1 y2 y3 y4 y5 y6)                           = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) (Pair.new x6 y6) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct8 name orig x0 x1 x2 x3 x4 x5 x6 x7)                        (Kind.Term.ct8 name1 _orig y0 y1 y2 y3 y4 y5 y6 y7)                        = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) (Pair.new x6 y6) (Pair.new x7 y7) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct9 name orig x0 x1 x2 x3 x4 x5 x6 x7 x8)                     (Kind.Term.ct9 name1 _orig y0 y1 y2 y3 y4 y5 y6 y7 y8)                     = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) (Pair.new x6 y6) (Pair.new x7 y7) (Pair.new x8 y8) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct10 name orig x0 x1 x2 x3 x4 x5 x6 x7 x8 x9)                 (Kind.Term.ct10 name1 _orig y0 y1 y2 y3 y4 y5 y6 y7 y8 y9)                 = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) (Pair.new x6 y6) (Pair.new x7 y7) (Pair.new x8 y8) (Pair.new x9 y9) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct11 name orig x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10)             (Kind.Term.ct11 name1 _orig y0 y1 y2 y3 y4 y5 y6 y7 y8 y9 y10)             = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) (Pair.new x6 y6) (Pair.new x7 y7) (Pair.new x8 y8) (Pair.new x9 y9) (Pair.new x10 y10) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct12 name orig x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11)         (Kind.Term.ct12 name1 _orig y0 y1 y2 y3 y4 y5 y6 y7 y8 y9 y10 y11)         = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) (Pair.new x6 y6) (Pair.new x7 y7) (Pair.new x8 y8) (Pair.new x9 y9) (Pair.new x10 y10) (Pair.new x11 y11) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct13 name orig x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12)     (Kind.Term.ct13 name1 _orig y0 y1 y2 y3 y4 y5 y6 y7 y8 y9 y10 y11 y12)     = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) (Pair.new x6 y6) (Pair.new x7 y7) (Pair.new x8 y8) (Pair.new x9 y9) (Pair.new x10 y10) (Pair.new x11 y11) (Pair.new x12 y12) ]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct14 name orig x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13) (Kind.Term.ct14 name1 _orig y0 y1 y2 y3 y4 y5 y6 y7 y8 y9 y10 y11 y12 y13) = Bool.if (Kind.Axiom.Compare name name1) (Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) (Pair.new x6 y6) (Pair.new x7 y7) (Pair.new x8 y8) (Pair.new x9 y9) (Pair.new x10 y10) (Pair.new x11 y11) (Pair.new x12 y12) (Pair.new x13 y13)]) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct15 name orig x0)                                            (Kind.Term.ct15 name1 _orig y0)                                            = Bool.if (Kind.Axiom.Compare name name1) (Kind.Term.get_pairs x0 y0) Maybe.none
+Kind.Term.get_pairs (Kind.Term.ct16 name orig x0)                                            (Kind.Term.ct16 name1 _orig y0)                                            = Bool.if (Kind.Axiom.Compare name name1) (Kind.Term.get_pairs x0 y0) Maybe.none
+Kind.Term.get_pairs (Kind.Term.args15 x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14)     (Kind.Term.args15 y0 y1 y2 y3 y4 y5 y6 y7 y8 y9 y10 y11 y12 y13 y14)       = Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) (Pair.new x6 y6) (Pair.new x7 y7) (Pair.new x8 y8) (Pair.new x9 y9) (Pair.new x10 y10) (Pair.new x11 y11) (Pair.new x12 y12) (Pair.new x13 y13) (Pair.new x14 y14)]
+Kind.Term.get_pairs (Kind.Term.args16 x0 x1 x2 x3 x4 x5 x6 x7 x8 x9 x10 x11 x12 x13 x14 x15) (Kind.Term.args16 y0 y1 y2 y3 y4 y5 y6 y7 y8 y9 y10 y11 y12 y13 y14 y15)   = Maybe.some [(Pair.new x0 y0) (Pair.new x1 y1) (Pair.new x2 y2) (Pair.new x3 y3) (Pair.new x4 y4) (Pair.new x5 y5) (Pair.new x6 y6) (Pair.new x7 y7) (Pair.new x8 y8) (Pair.new x9 y9) (Pair.new x10 y10) (Pair.new x11 y11) (Pair.new x12 y12) (Pair.new x13 y13) (Pair.new x14 y14)]
+Kind.Term.get_pairs _ _ = Maybe.none
+
+Cover/Constraint.simplify.go (ls: (List (Pair Kind.Term Kind.Term))) (ty: Kind.Term) : List Cover/Constraint
+Cover/Constraint.simplify.go List.nil other = List.nil
+Cover/Constraint.simplify.go (List.cons arg xs) (Kind.Term.all orig name typ body) =
+    let x = (Cover/Constraint.new (Pair.fst arg) (Pair.snd arg) typ)
+    List.cons x (Cover/Constraint.simplify.go xs (body (Pair.fst arg)))
+
+Cover/Constraint.simplify.go (List.cons arg xs) _ = (HVM.log "Oh no!!!" List.nil)
+
+Result.from_maybe <a> (m: Maybe a) : Result a
+Result.from_maybe (Maybe.some x) = Result.ok x
+Result.from_maybe Maybe.none = Result.bottom
+
+record Zipper (a : Type) {
+    start : List a
+    end   : List a
+}
+
+Zipper.from_list <a> (b: List a) : Zipper a
+Zipper.from_list ls = Zipper.new List.nil ls
+
+Zipper.to_list <a> (b: Zipper a) : List a
+Zipper.to_list a (Zipper.new start end) = List.concat (List.reverse start) end
+
+Zipper.move <a> (b: Zipper a) : Zipper a
+Zipper.move (Zipper.new start (List.cons x xs)) = Zipper.new (List.cons x start) xs
+Zipper.move (Zipper.new start List.nil) = Zipper.new start List.nil
+
+Zipper.delete <a> (b: Zipper a) : Zipper a
+Zipper.delete (Zipper.new start (List.cons x xs)) = Zipper.new start xs
+Zipper.delete (Zipper.new start List.nil) = Zipper.new start List.nil
+
+Zipper.current <a> (b: Zipper a) : Maybe a
+Zipper.current (Zipper.new start (List.cons x xs)) = Maybe.some x
+Zipper.current (Zipper.new start List.nil)         = Maybe.none
+
+Zipper.add <a> (zipper: Zipper a) (elem: a) : Zipper a
+Zipper.add (Zipper.new start end) elem = Zipper.new start (List.cons elem end)
+
+Zipper.remove <a> (b: Zipper a) : Maybe (Pair a (Zipper a))
+Zipper.remove a (Zipper.new fst snd) =
+    do Maybe {
+        ask head = List.head snd
+        Maybe.some (Pair.new head (Zipper.new fst (List.tail snd)))
+    }
+
+Zipper.add_mass <a> (zipper: Zipper a) (elems: List a) : Zipper a
+Zipper.add_mass (Zipper.new start end) elems = Zipper.new start (List.concat elems end)
+
+Zipper.is_at_the_end <a> (b: Zipper a) : Bool
+Zipper.is_at_the_end a (Zipper.new _ end) = List.is_nil end
+
+Cover/Row.find_splittable.go (zipper: Zipper Cover/Constraint) : Maybe (Pair Cover/Constraint (Zipper Cover/Constraint))
+Cover/Row.find_splittable.go zipper =
+    do Maybe {
+        ask current = Zipper.current zipper
+        if Maybe.is_some (Cover/Constraint.is_cons current) {
+            Zipper.remove zipper
+        } else {
+            Cover/Row.find_splittable.go (Zipper.move zipper)
+        }
+    }
+
+Cover/Row.find_splittable (row: Cover/Row) : Maybe (Pair Cover/Constraint (Zipper Cover/Constraint))
+Cover/Row.find_splittable (Cover/Row.new _ constraints) = Cover/Row.find_splittable.go (Zipper.from_list constraints)
+
+#inline
+Unsafe.coerce (n: _) : _
+Unsafe.coerce n = n
+
+Maybe.unsafe <t> (n : Maybe t) : t
+Maybe.unsafe (Maybe.some n) = n
+
+Cover/Maker : Type
+Kind.Creator.cons (n: U60) (ty: Kind.Term) (body: Kind.Term -> Cover/Maker) : Cover/Maker
+Kind.Axiom.Constructor.Mk (constructor_id: U60) (orig: U60) (ty: Kind.Term) : Maybe Cover/Maker
+
+Cover/Maker.make (maker: Cover/Maker) : Kind.Checker Kind.Term
+Cover/Maker.make (Kind.Creator.cons name typ body) =
+    do Kind.Checker {
+        ask depth = Kind.Checker.get_depth
+        Kind.Checker.extend name typ []
+        let var = Kind.Term.var 0 name depth
+        Cover/Maker.make (body var)
+    }
+
+Cover/Maker.make other = Kind.Checker.pure (Unsafe.coerce other)
+
+List.cat_maybes <a> (l: List (Maybe a)) : List a
+List.cat_maybes (List.cons x xs) =
+    match Maybe x {
+        some value => List.cons value (List.cat_maybes xs)
+        none => List.cat_maybes xs
+    }
+
+List.cat_maybes List.nil = List.nil
+
+
+// Need to implement indices as equality constraints TwT
+Cover/Constraint.simplify (kd: Cover/Constraint) : Kind.Checker (Result (List Cover/Constraint))
+Cover/Constraint.simplify (Cover/Constraint.new (Kind.Term.var orig name idx) right ty) =
+    do Kind.Checker {
+        ask values = Kind.Checker.find (List Kind.Term) idx List.nil (n => t => v => v)
+        let head = List.head values
+        return (if List.is_nil values {
+            Result.none
+        } else {
+            let res = (do Maybe {
+                ask left = head
+                ask name = Kind.Term.get_name right
+                ask ls   = Kind.Term.get_pairs left right
+                let ty   = Kind.Axiom.TypeOf name
+                return Cover/Constraint.simplify.go ls ty
+            })
+            match Maybe (HVM.log res res) {
+                some value => Result.ok value
+                none => Result.bottom
+            }
+        })
+    }
+
+Cover/Constraint.simplify _ = Kind.Checker.pure Result.none
+
+Cover/Row.simplify.go2 (row: Zipper Cover/Constraint) (maybe: Maybe (Pair Cover/Constraint (Zipper Cover/Constraint))) : Kind.Checker (Maybe (Zipper Cover/Constraint))
+Cover/Row.simplify.go2 row (Maybe.some pair) =
+    do Kind.Checker {
+        let Pair.new (fst = constraint) (snd = zipper) = pair
+        ask res = (Cover/Constraint.simplify constraint)
+        match Result res {
+            ok value => Cover/Row.simplify.go (Zipper.add_mass zipper value)
+            none     => Cover/Row.simplify.go (Zipper.move row)
+            bottom   => Kind.Checker.pure Maybe.none
+        }
+    }
+
+Cover/Row.simplify.go2 row Maybe.none = Kind.Checker.pure (Maybe.pure row)
+
+Cover/Row.simplify.go (row: Zipper Cover/Constraint) : Kind.Checker (Maybe (Zipper Cover/Constraint))
+Cover/Row.simplify.go row =
+    if Zipper.is_at_the_end row {
+        Kind.Checker.pure (Maybe.pure row)
+    } else {
+        Cover/Row.simplify.go2 row (Zipper.remove row)
+    }
+
+Cover/Row.simplify (row: Cover/Row) : Kind.Checker (Maybe Cover/Row)
+Cover/Row.simplify (Cover/Row.new ty rows) =
+    do Kind.Checker {
+        ask res = Cover/Row.simplify.go (Zipper.from_list rows)
+        return Maybe.map (rows => Cover/Row.new ty (Zipper.to_list rows)) res
+    }
+
+Cover/Problem.simplify (problem: Cover/Problem) : Kind.Checker Cover/Problem
+Cover/Problem.simplify (Cover/Problem.new types rows) =
+    do Kind.Checker {
+        ask rows = Kind.Checker.sequence (List.map rows (x => Cover/Row.simplify x))
+        return Cover/Problem.new types (List.cat_maybes rows)
+    }
+
+Cover/Problem.split_on_constructor (problem: Cover/Problem) (family: U60) (cons: U60) (constraint: Cover/Constraint) : Kind.Checker Cover/CaseTree
+Cover/Problem.split_on_constructor (Cover/Problem.new type rows) family cons (Cover/Constraint.new left right ty) =
+    Kind.Checker.local (
+        do Kind.Checker {
+            match Maybe (Kind.Axiom.Constructor.Mk cons 0 ty) {
+                some (value = maker) =>
+                    do Kind.Checker {
+                        ask term = Cover/Maker.make maker
+                        Kind.Checker.set_right_hand_side Bool.false
+                        Kind.Checker.equal term left
+                        ask ctx = Kind.Checker.get_context
+                        ask res = Cover/Problem.simplify (Cover/Problem.new type rows)
+                        Cover/check.problem res
+                    }
+                none =>
+                    do Kind.Checker {
+                        Kind.Checker.check left ty
+                        Cover/check.problem (Cover/Problem.new type rows)
+                    }
+            }
+        })
+
+
+Kind.Checker.sequence <a> (ls: List (Kind.Checker a)) : Kind.Checker (List a)
+Kind.Checker.sequence List.nil         = Kind.Checker.pure List.nil
+Kind.Checker.sequence (List.cons x xs) =
+    do Kind.Checker {
+        ask head = x
+        ask tail = Kind.Checker.sequence xs
+        return (List.cons head tail)
+    }
+
+Kind.Checker.void <a> (n : Kind.Checker a) : Kind.Checker Unit
+Kind.Checker.void action =
+    do Kind.Checker {
+        ask res = action
+        return Unit.new
+    }
+
+Cover/Problem.split (problem: Cover/Problem) : Kind.Checker Cover/CaseTree
+Cover/Problem.split (Cover/Problem.new type rows) =
+    (Maybe.default
+        (do Maybe {
+            ask head = List.head rows
+            ask Pair.new (fst = constraint) (snd = zipper) = Cover/Row.find_splittable head
+            ask family = Kind.Term.get_name (Cover/Constraint.ty.get constraint)
+            let cons = Kind.Axiom.Family.Constructors family
+            let names  = List.map cons (x => Kind.Axiom.NameOf x)
+            return do Kind.Checker {
+                ask branches = Kind.Checker.sequence (List.map cons (x => Cover/Problem.split_on_constructor (Cover/Problem.new type rows) family x constraint))
+                let cases    = List.zip names branches
+                return Cover/CaseTree.case cases
+            }
+        })
+        (Cover/check.problem (Cover/Problem.new type rows)))
+
+Cover/Problem.is_empty (problem: Cover/Problem) : Bool
+Cover/Problem.is_empty (Cover/Problem.new _ List.nil) = Bool.true
+Cover/Problem.is_empty (Cover/Problem.new _ _)        = Bool.false
+
+Cover/check.problem (problem: Cover/Problem) : Kind.Checker Cover/CaseTree
+Cover/check.problem problem =
+    do Kind.Checker {
+        if Cover/Problem.is_empty problem {
+            Kind.Checker.pure Cover/CaseTree.uncovered
+        } else {
+            if Cover/Problem.is_solved problem {
+                Kind.Checker.pure Cover/CaseTree.done
+            } else {
+                Cover/Problem.intro problem
+            }
+        }
+    }
 
 Cover/check (function_id: U60): Kind.Checker Unit
 Cover/check fnid =
-    let rules   = Kind.Axiom.RuleOf fnid
-    let type    = Kind.Axiom.TypeOf fnid
-    let problem = Cover/Problem.new type (rows = List.map rules (x => Cover/Row.new x []))
-    _
+    do Kind.Checker {
+        let rules   = Kind.Axiom.RuleOf fnid
+        let type    = Kind.Axiom.TypeOf fnid
+        let problem = Cover/Problem.new type (rows = List.map rules (x => Cover/Row.new x []))
+        ask problem = Cover/check.problem problem
+
+        ask ctx = Kind.Checker.get_context
+
+        return (HVM.log (Cover/CaseTree.show "" problem) Unit.new)
+    }

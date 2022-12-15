@@ -1,0 +1,9 @@
+// Extends the context and the checker and then shrink it after the operation.
+Kind.Checker.local <a> (checker: Kind.Checker a) : Kind.Checker a
+Kind.Checker.local a checker =
+  do Kind.Checker {
+    ask ctx = Kind.Checker.get_context
+    ask got = checker
+    Kind.Checker.set_context ctx
+    return got
+  }

@@ -1,0 +1,3 @@
+Kind.Context.shrink_to (ctx: Kind.Context) (depth: U60): Kind.Context
+Kind.Context.shrink_to _ 0 = Kind.Context.empty
+Kind.Context.shrink_to (Kind.Context.entry name type vals rest) n = Kind.Context.entry name type vals (Kind.Context.shrink_to (- n 1))

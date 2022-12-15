@@ -1,0 +1,4 @@
+// Shrinks the context inside of the @Kind.Checker@.
+Kind.Checker.shrink (new_depth: U60) : Kind.Checker Unit
+Kind.Checker.shrink new_depth = context => hole_count => depth => rhs => subst => eqts => errs =>
+  Kind.Result.checked (Kind.Context.shrink_to new_depth context) hole_count new_depth rhs subst eqts errs Unit.new

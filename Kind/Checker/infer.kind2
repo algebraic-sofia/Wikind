@@ -83,8 +83,9 @@ Kind.Checker.infer (Kind.Term.sub orig name indx redx expr) =
     ask got = Kind.Checker.find indx Maybe.none (n => t => v => Maybe.some (Pair.new t v))
     match Maybe got {
       none => Kind.Checker.bind Kind.Checker.get_context (ctx => Kind.Checker.fail (Kind.Error.unbound_variable ctx orig))
-      some value => match Pair value {
-        new snd .. => do Kind.Checker {
+      some value => 
+        let Pair.new snd .. = value
+        do Kind.Checker {
           match Maybe (List.at.u60 snd redx) {
             none => Kind.Checker.bind Kind.Checker.get_context (ctx => Kind.Checker.fail (Kind.Error.unbound_variable ctx orig))
             some value => do Kind.Checker {
@@ -93,7 +94,6 @@ Kind.Checker.infer (Kind.Term.sub orig name indx redx expr) =
             }
           }
         }
-      }
     }
   }
 

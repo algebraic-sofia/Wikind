@@ -555,13 +555,6 @@ Kind.Checker.equal a b =
     }
   }
 
-record Player {
-  constructor new
-  name : String
-  age : U60
-  social_points : U60
-}
-
 Kind.Checker.equal.var (rhs: Bool) (orig: U60) (name: U60) (idx: U60) (b: Kind.Term): Kind.Checker Bool
 
 Kind.Checker.equal.var Bool.false orig name idx b =

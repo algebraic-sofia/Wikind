@@ -11,7 +11,13 @@ Kind.Checker.check (Kind.Term.lam orig name body) type =
         }
       )
       ((orig: U60) => (name: U60) => (body: Kind.Term -> Kind.Term) =>
-        Kind.Checker.bind Kind.Checker.get_context (ctx => Kind.Checker.fail (Kind.Error.cant_infer_lambda ctx orig)))
+        do Kind.Checker {
+          ask ctx  = Kind.Checker.get_context
+          ask arg  = Kind.Checker.new_hole orig 
+          ask arg2 = Kind.Checker.new_hole orig
+          let fun  = Kind.Term.all orig 0 arg (x => arg2)
+          Kind.Checker.check (Kind.Term.lam orig name body) fun
+        })
     ) :: U60 -> U60 -> (Kind.Term -> Kind.Term) -> Kind.Checker Unit
     fun orig name body
   )
@@ -36,7 +42,7 @@ Kind.Checker.check (Kind.Term.var orig name idx) type =
     if rhs {
       Kind.Checker.compare rhs (Kind.Term.var orig name idx) type
     } else {
-      Kind.Checker.extend (HVM.log name name) type List.nil
+      Kind.Checker.extend name type List.nil
     }
   }
 

@@ -7,6 +7,6 @@ Kind.Rule.show (term: Kind.Rule) : String
 Kind.Rule.show (Kind.Rule.rhs res)     = Kind.Term.show res
 Kind.Rule.show (Kind.Rule.lhs arg res) = 
   (Kind.Printer.text 
-    [(Kind.Rule.show res)
+    [(Kind.Term.show arg)
     " "
     (Kind.Rule.show res)])
